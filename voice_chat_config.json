@@ -1,0 +1,11 @@
+{
+    "threshold": 3233,
+    "pause_duration": 1.5,
+    "max_speech_duration": 15,
+    "enable_echo_cancellation": false,
+    "tts_enabled": true,
+    "selected_voice": "ro-RO-AlinaNeural",
+    "conversation_memory_limit": 10,
+    "auto_calibrate_on_start": true,
+    "desktop_assistant_mode": true
+}

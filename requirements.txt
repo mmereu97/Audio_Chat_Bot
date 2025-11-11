@@ -1,0 +1,32 @@
+# === GUI Framework ===
+PySide6
+
+# === Google Generative AI ===
+google-generativeai
+
+# === Loading environment variables (.env file) ===
+python-dotenv
+
+# === Text-to-Speech (Microsoft Edge) ===
+edge-tts
+
+# === Audio Playback (for TTS) ===
+pygame
+
+# === Speech-to-Text (Google Speech Recognition) ===
+SpeechRecognition
+
+# === Required by SpeechRecognition for microphone access ===
+PyAudio
+
+# === Deep Learning framework for Silero VAD ===
+torch
+torchaudio
+
+# === Microphone input for VAD ===
+sounddevice
+
+# === Numerical operations for audio data ===
+numpy
+
+pillow
