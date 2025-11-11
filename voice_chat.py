@@ -423,7 +423,8 @@ class AdvancedVoiceChatApp(QWidget):
             "custom_system_prompt": "Ești un asistent util și prietenos. Răspunde concis și clar în limba română.",
             "conversation_memory_limit": 10,
             "auto_calibrate_on_start": True,  # <-- SETARE AUTO-CALIBRARE
-            "desktop_assistant_mode": False  # <-- SETARE DESKTOP ASSISTANT
+            "desktop_assistant_mode": False,  # <-- SETARE DESKTOP ASSISTANT
+            "selected_model": "gemini-flash-latest"  # <-- MODEL AI SELECTAT
         }
         try:
             if os.path.exists(self.CONFIG_FILE):
@@ -444,8 +445,10 @@ class AdvancedVoiceChatApp(QWidget):
         self.conversation_memory_limit = default_config["conversation_memory_limit"]
         self.auto_calibrate_on_start = default_config["auto_calibrate_on_start"] # <-- ÎNCĂRCĂM SETAREA
         self.desktop_assistant_mode = default_config["desktop_assistant_mode"] # <-- ÎNCĂRCĂM DESKTOP ASSISTANT
+        self.selected_model = default_config["selected_model"]  # <-- ÎNCĂRCĂM MODELUL
         log_timestamp(f"⚙️ [CONFIG] Auto-calibrare la pornire încărcat: {self.auto_calibrate_on_start}", "config")
         log_timestamp(f"⚙️ [CONFIG] Desktop Assistant Mode încărcat: {self.desktop_assistant_mode}", "config")
+        log_timestamp(f"🤖 [CONFIG] Model AI încărcat: {self.selected_model}", "config")
     
     # --- FUNCȚII NOI PENTRU PROMPT EXTERN ---
     PROMPT_FILE = "system_prompt.txt"
@@ -483,8 +486,8 @@ class AdvancedVoiceChatApp(QWidget):
     def reload_system_prompt(self):
         """Reîncarcă prompt-ul din fișier și reinițializează modelul."""
         if self.load_system_prompt():
-            # Reinițializăm modelul cu noul prompt
-            self.model = genai.GenerativeModel(model_name="gemini-flash-latest", system_instruction=self.custom_system_prompt)
+            # Reinițializăm modelul cu noul prompt (folosim modelul selectat)
+            self.model = genai.GenerativeModel(model_name=self.selected_model, system_instruction=self.custom_system_prompt)
             self.chat = self.model.start_chat(history=[])
             self.conversation_history = []
             
@@ -509,12 +512,13 @@ class AdvancedVoiceChatApp(QWidget):
             # custom_system_prompt NU mai e salvat aici - se salvează în system_prompt.txt
             "conversation_memory_limit": self.conversation_memory_limit,
             "auto_calibrate_on_start": self.auto_calibrate_on_start, # <-- SALVĂM AUTO-CALIBRARE
-            "desktop_assistant_mode": self.desktop_assistant_mode  # <-- SALVĂM DESKTOP ASSISTANT
+            "desktop_assistant_mode": self.desktop_assistant_mode,  # <-- SALVĂM DESKTOP ASSISTANT
+            "selected_model": self.selected_model  # <-- SALVĂM MODELUL AI
         }
         try:
             with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=4, ensure_ascii=False)
-            log_timestamp(f"💾 [CONFIG] Salvat: auto_calibrate={self.auto_calibrate_on_start}, desktop_mode={self.desktop_assistant_mode}", "config")
+            log_timestamp(f"💾 [CONFIG] Salvat: model={self.selected_model}, auto_calibrate={self.auto_calibrate_on_start}, desktop_mode={self.desktop_assistant_mode}", "config")
         except Exception as e:
             log_timestamp(f"❌ [CONFIG] Eroare la salvarea configurației: {e}", "config")
     
@@ -551,6 +555,13 @@ class AdvancedVoiceChatApp(QWidget):
         os.makedirs("screenshots", exist_ok=True) # Creează folderul dacă nu există
         # --- SFÂRȘIT BLOC NOU ---
 
+        # --- MODELE AI DISPONIBILE ---
+        self.available_models = {
+            "Gemini Flash (Rapid)": "gemini-flash-latest",
+            "Gemini Pro (Avansat)": "gemini-pro-latest"
+        }
+        # --- SFÂRȘIT MODELE ---
+
         self.romanian_voices = {"Emil (Bărbat)": "ro-RO-EmilNeural", "Alina (Femeie)": "ro-RO-AlinaNeural"}
         self.voice_config = {"margin_percent": 25}
         self.load_config()
@@ -559,7 +570,8 @@ class AdvancedVoiceChatApp(QWidget):
         self.load_system_prompt()
         # --- SFÂRȘIT ÎNCĂRCARE PROMPT ---
         
-        self.model = genai.GenerativeModel(model_name="gemini-flash-latest", system_instruction=self.custom_system_prompt)
+        # Folosim modelul selectat din config
+        self.model = genai.GenerativeModel(model_name=self.selected_model, system_instruction=self.custom_system_prompt)
         self.chat = self.model.start_chat(history=[])
         self.conversation_history = []
         self.voice_enabled = self.is_muted = False
@@ -782,9 +794,10 @@ class AdvancedVoiceChatApp(QWidget):
                     screenshot.save(save_path)
                     log_timestamp(f"💾 [ASSISTANT] Salvat: {save_path}", "app")
                     
-                    # Creăm model viziune - FOLOSIM ACELAȘI MODEL CA ÎN REST
-                    vision_model = genai.GenerativeModel('gemini-flash-latest')
-                    log_timestamp("🤖 [ASSISTANT] Model Gemini Flash Latest (viziune) init", "app")
+                    # Creăm model viziune - FOLOSIM MODELUL SELECTAT
+                    vision_model = genai.GenerativeModel(self.selected_model)
+                    model_name = "Flash" if "flash" in self.selected_model.lower() else "Pro"
+                    log_timestamp(f"🤖 [ASSISTANT] Model Gemini {model_name} (viziune) init", "app")
                     
                     # Creăm chat cu istoric TEXT-ONLY
                     chat_with_history = vision_model.start_chat(history=self.conversation_history[:-1])
@@ -1146,6 +1159,41 @@ class AdvancedVoiceChatApp(QWidget):
         prompt_layout.addWidget(self.prompt_preview)
         
         prompt_group.setLayout(prompt_layout)
+        
+        # --- GRUP NOU: MODEL AI ---
+        model_group = QGroupBox("🤖 Model AI")
+        model_layout = QFormLayout()
+        model_info = QLabel("Selectează modelul AI folosit pentru conversație:")
+        model_info.setWordWrap(True)
+        model_info.setStyleSheet("font-size: 11px; color: #666; margin-bottom: 5px;")
+        model_layout.addRow(model_info)
+        
+        self.model_combo = QComboBox()
+        for model_name in self.available_models.keys():
+            self.model_combo.addItem(model_name)
+        
+        # Setăm modelul curent din config
+        for idx, (name, code) in enumerate(self.available_models.items()):
+            if code == self.selected_model:
+                self.model_combo.setCurrentIndex(idx)
+                break
+        
+        self.model_combo.setStyleSheet("font-size: 12px; padding: 5px;")
+        self.model_combo.currentTextChanged.connect(self.on_model_changed)
+        model_layout.addRow("Model AI:", self.model_combo)
+        
+        # Descrieri modele
+        model_desc = QLabel(
+            "<b>Gemini Flash:</b> Rapid și eficient, ideal pentru conversații zilnice<br>"
+            "<b>Gemini Pro:</b> Mai avansat, răspunsuri mai detaliate și complexe"
+        )
+        model_desc.setWordWrap(True)
+        model_desc.setStyleSheet("font-size: 10px; color: #777; font-style: italic; margin-top: 5px;")
+        model_layout.addRow(model_desc)
+        
+        model_group.setLayout(model_layout)
+        # --- SFÂRȘIT GRUP MODEL AI ---
+        
         memory_group = QGroupBox("🧠 Memorie Conversație")
         memory_layout = QFormLayout()
         memory_info = QLabel("Numărul de schimburi de replici pe care AI-ul le păstrează în memorie:")
@@ -1161,6 +1209,7 @@ class AdvancedVoiceChatApp(QWidget):
         memory_layout.addRow("Limită memorie:", self.memory_spinbox)
         memory_group.setLayout(memory_layout)
         layout.addWidget(prompt_group)
+        layout.addWidget(model_group)  # <-- ADĂUGĂM GRUPA MODEL AI
         layout.addWidget(memory_group)
         layout.addStretch()
         widget.setLayout(layout)
@@ -1233,8 +1282,8 @@ class AdvancedVoiceChatApp(QWidget):
                 
                 # SALVĂM ÎN FIȘIER EXTERN (nu mai salvăm în config)
                 if self.save_system_prompt():
-                    # Reinițializăm modelul
-                    self.model = genai.GenerativeModel(model_name="gemini-flash-latest", system_instruction=self.custom_system_prompt)
+                    # Reinițializăm modelul (folosim modelul selectat)
+                    self.model = genai.GenerativeModel(model_name=self.selected_model, system_instruction=self.custom_system_prompt)
                     self.chat = self.model.start_chat(history=[])
                     self.conversation_history = []
                     
@@ -1248,6 +1297,23 @@ class AdvancedVoiceChatApp(QWidget):
     def on_memory_changed(self, value):
         self.conversation_memory_limit = value
         self.save_config()
+    
+    def on_model_changed(self, model_name):
+        """Handler pentru schimbarea modelului AI."""
+        new_model = self.available_models[model_name]
+        if new_model != self.selected_model:
+            self.selected_model = new_model
+            log_timestamp(f"🤖 [MODEL] Model schimbat la: {self.selected_model}", "config")
+            
+            # Reinițializăm modelul cu noul model selectat
+            self.model = genai.GenerativeModel(model_name=self.selected_model, system_instruction=self.custom_system_prompt)
+            self.chat = self.model.start_chat(history=[])
+            self.conversation_history = []
+            
+            self.save_config()
+            log_timestamp(f"✅ [MODEL] Model reinițializat. Conversația a fost resetată.", "config")
+            QMessageBox.information(self, "Model Schimbat", f"Modelul AI a fost schimbat la {model_name}.\nConversația a fost resetată.")
+    
     def send_text_message(self):
         text = self.text_input.text().strip()
         if not text: return
@@ -1314,8 +1380,21 @@ class AdvancedVoiceChatApp(QWidget):
             self.cronometru_galben.show()
             self.cronometru_verde.hide()
     def add_to_chat(self, user, message):
-        color = "#2980b9" if user == "Tu" else "#8e44ad" if user == "Gemini" else "#16a085"
-        self.chat_display.append(f"<b style='color:{color};'>{user}:</b> {message}")
+        """Adaugă mesaj în chat cu formatare color și afișare model AI."""
+        # Determinăm culoarea în funcție de user
+        if user == "Tu":
+            color = "#2980b9"
+            display_name = user
+        elif user == "Gemini":
+            color = "#8e44ad"
+            # Afișăm numele modelului pentru Gemini
+            model_display_name = "Flash" if "flash" in self.selected_model.lower() else "Pro"
+            display_name = f"Gemini {model_display_name}"
+        else:
+            color = "#16a085"
+            display_name = user
+        
+        self.chat_display.append(f"<b style='color:{color};'>{display_name}:</b> {message}")
     def closeEvent(self, event):
         log_timestamp("🛑 Se închide aplicația...", "app")
         self.save_config()

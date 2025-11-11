@@ -7,5 +7,6 @@
     "selected_voice": "ro-RO-AlinaNeural",
     "conversation_memory_limit": 10,
     "auto_calibrate_on_start": true,
-    "desktop_assistant_mode": true
+    "desktop_assistant_mode": true,
+    "selected_model": "gemini-pro-latest"
 }
