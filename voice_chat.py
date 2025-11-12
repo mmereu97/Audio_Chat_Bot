@@ -1925,19 +1925,28 @@ class AdvancedVoiceChatApp(QWidget):
         """Toggle always-on-top pentru fereastră."""
         self.is_pinned = not self.is_pinned
         
+        # Salvăm geometria curentă
+        current_geometry = self.geometry()
+        
         if self.is_pinned:
             log_timestamp("📌 [UI] Always-on-top activat", "app")
             self.pin_button.setText("📌 Pinned")
-            self.pin_button.setStyleSheet("background-color: #e67e22; color: white; font-size: 12px; padding: 5px 10px; font-weight: bold;")
-            self.setWindowFlags(self.windowFlags() | Qt.WindowFlag.WindowStaysOnTopHint)
+            self.pin_button.setStyleSheet("background-color: #e67e22; color: white; font-size: 12px; padding: 8px 12px; font-weight: bold;")
+            
+            # Adăugăm DOAR flag-ul de always-on-top, păstrând restul
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+            
         else:
             log_timestamp("📍 [UI] Always-on-top dezactivat", "app")
             self.pin_button.setText("📍 Pin")
-            self.pin_button.setStyleSheet("background-color: #95a5a6; color: white; font-size: 12px; padding: 5px 10px; font-weight: bold;")
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowFlag.WindowStaysOnTopHint)
+            self.pin_button.setStyleSheet("background-color: #95a5a6; color: white; font-size: 12px; padding: 8px 12px; font-weight: bold;")
+            
+            # Scoatem DOAR flag-ul de always-on-top, păstrând restul
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, False)
         
-        # IMPORTANT: show() pentru a aplica window flags
+        # Arătăm din nou fereastra și restaurăm geometria
         self.show()
+        self.setGeometry(current_geometry)
         
         # Salvează starea
         self.save_config()

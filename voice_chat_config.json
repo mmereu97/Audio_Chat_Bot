@@ -10,6 +10,6 @@
     "desktop_assistant_mode": true,
     "selected_model": "gemini-flash-latest",
     "selected_prompt": "Manuela.txt",
-    "compact_mode": true,
+    "compact_mode": false,
     "always_on_top": false
 }
