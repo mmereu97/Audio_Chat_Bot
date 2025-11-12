@@ -244,3 +244,4 @@ log/
 test_*.py
 scratch/
 experiments/
+prompts/

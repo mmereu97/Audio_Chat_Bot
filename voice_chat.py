@@ -40,7 +40,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QTextEdit, QGroupBox, QFormLayout,
                                QSlider, QMessageBox, QCheckBox, QTabWidget, QSpinBox, QDialog,
-                               QDialogButtonBox, QComboBox)
+                               QDialogButtonBox, QComboBox, QStackedLayout)
 from PySide6.QtCore import QThread, Signal, QObject, Qt, QTimer, Slot
 from PySide6.QtGui import QColor, QFont, QScreen, QTextCursor
 import google.generativeai as genai
@@ -88,6 +88,38 @@ def cleanup_temp_files():
         log_timestamp(f"✅ [CLEANUP] Curățenie finalizată. {deleted_count} fișiere șterse.", "cleanup")
     else:
         log_timestamp("✅ [CLEANUP] Niciun fișier temporar de șters.", "cleanup")
+
+# =================================================================================
+# ⭐ FUNCȚIE NOUĂ PENTRU GOLIREA FOLDERULUI SCREENSHOTS
+# =================================================================================
+def cleanup_screenshots_folder():
+    """Șterge toate fișierele din folderul 'screenshots' la pornire."""
+    folder_name = "screenshots"
+    log_timestamp(f"🧹 [CLEANUP] Se golesc fișierele din folderul '{folder_name}'...", "cleanup")
+    deleted_count = 0
+    
+    # Verificăm dacă folderul 'screenshots' există
+    if not os.path.isdir(folder_name):
+        log_timestamp(f"✅ [CLEANUP] Folderul '{folder_name}' nu există, nu este necesară curățenia.", "cleanup")
+        return # Ieșim din funcție dacă nu există folderul
+
+    for filename in os.listdir(folder_name):
+        full_path = os.path.join(folder_name, filename)
+        # Verificăm dacă este un fișier, nu un subfolder
+        if os.path.isfile(full_path):
+            try:
+                os.remove(full_path)
+                log_timestamp(f"  -> Șters: {os.path.join(folder_name, filename)}", "cleanup")
+                deleted_count += 1
+            except Exception as e:
+                log_timestamp(f"  -> ⚠️ Eroare la ștergerea {full_path}: {e}", "cleanup")
+    
+    if deleted_count > 0:
+        log_timestamp(f"✅ [CLEANUP] Curățenie finalizată. {deleted_count} screenshot-uri șterse.", "cleanup")
+    else:
+        log_timestamp(f"✅ [CLEANUP] Folderul '{folder_name}' era deja gol.", "cleanup")
+
+
 
 
 # ... (Clasa ContinuousVoiceWorker rămâne neschimbată) ...
@@ -422,16 +454,17 @@ class AdvancedVoiceChatApp(QWidget):
     CONFIG_FILE = "voice_chat_config.json"
     
     def load_config(self):
-        # --- MODIFICAT: Adăugăm noua setare de auto-calibrare ---
+        """Încarcă configurația din fișierul JSON"""
         default_config = {
             "threshold": 4000, "pause_duration": 1.5, "max_speech_duration": 15,
             "enable_echo_cancellation": True, "tts_enabled": True,
             "selected_voice": "ro-RO-EmilNeural",
             "custom_system_prompt": "Ești un asistent util și prietenos. Răspunde concis și clar în limba română.",
             "conversation_memory_limit": 10,
-            "auto_calibrate_on_start": True,  # <-- SETARE AUTO-CALIBRARE
-            "desktop_assistant_mode": False,  # <-- SETARE DESKTOP ASSISTANT
-            "selected_model": "gemini-flash-latest"  # <-- MODEL AI SELECTAT
+            "auto_calibrate_on_start": True,
+            "desktop_assistant_mode": False,
+            "selected_model": "gemini-flash-latest",
+            "selected_prompt": "default.txt"  # <-- NOU: Promptul selectat
         }
         try:
             if os.path.exists(self.CONFIG_FILE):
@@ -448,65 +481,343 @@ class AdvancedVoiceChatApp(QWidget):
         self.voice_config["enable_echo_cancellation"] = default_config["enable_echo_cancellation"]
         self.tts_enabled = default_config["tts_enabled"]
         self.selected_voice = default_config["selected_voice"]
-        self.custom_system_prompt = default_config["custom_system_prompt"]  # Valoare implicit
+        self.custom_system_prompt = default_config["custom_system_prompt"]
         self.conversation_memory_limit = default_config["conversation_memory_limit"]
-        self.auto_calibrate_on_start = default_config["auto_calibrate_on_start"] # <-- ÎNCĂRCĂM SETAREA
-        self.desktop_assistant_mode = default_config["desktop_assistant_mode"] # <-- ÎNCĂRCĂM DESKTOP ASSISTANT
-        self.selected_model = default_config["selected_model"]  # <-- ÎNCĂRCĂM MODELUL
+        self.auto_calibrate_on_start = default_config["auto_calibrate_on_start"]
+        self.desktop_assistant_mode = default_config["desktop_assistant_mode"]
+        self.selected_model = default_config["selected_model"]
+        self.selected_prompt_file = default_config["selected_prompt"]  # <-- NOU
+        
         log_timestamp(f"⚙️ [CONFIG] Auto-calibrare la pornire încărcat: {self.auto_calibrate_on_start}", "config")
         log_timestamp(f"⚙️ [CONFIG] Desktop Assistant Mode încărcat: {self.desktop_assistant_mode}", "config")
         log_timestamp(f"🤖 [CONFIG] Model AI încărcat: {self.selected_model}", "config")
+        log_timestamp(f"📝 [CONFIG] Prompt selectat: {self.selected_prompt_file}", "config")
+
+    # --- FUNCȚII NOI PENTRU PROMPT EXTERN - SISTEM MULTIPLU ---
+    PROMPTS_FOLDER = "prompts"
     
-    # --- FUNCȚII NOI PENTRU PROMPT EXTERN ---
-    PROMPT_FILE = "system_prompt.txt"
+
+    def init_prompts_folder(self):
+        """Creează folderul prompts și promptul default dacă nu există."""
+        if not os.path.exists(self.PROMPTS_FOLDER):
+            os.makedirs(self.PROMPTS_FOLDER)
+            log_timestamp(f"📁 [PROMPTS] Folder '{self.PROMPTS_FOLDER}' creat.", "config")
+        
+        # Verificăm dacă există măcar un prompt
+        prompts = self.load_available_prompts()
+        if not prompts:
+            # Creăm promptul default cu conținutul actual
+            default_path = os.path.join(self.PROMPTS_FOLDER, "default.txt")
+            with open(default_path, "w", encoding="utf-8") as f:
+                f.write("Ești un asistent vocal prietenos și util.")
+            log_timestamp(f"📝 [PROMPTS] Prompt default creat: {default_path}", "config")
     
-    def load_system_prompt(self):
-        """Încarcă prompt-ul de sistem din fișierul extern."""
+    def load_available_prompts(self):
+        """Returnează lista tuturor prompturilor disponibile."""
+        if not os.path.exists(self.PROMPTS_FOLDER):
+            return []
+        files = [f for f in os.listdir(self.PROMPTS_FOLDER) if f.endswith('.txt')]
+        return sorted(files)
+    
+    def load_prompt_from_file(self, filename):
+        """Încarcă conținutul unui prompt din fișier."""
+        filepath = os.path.join(self.PROMPTS_FOLDER, filename)
         try:
-            if os.path.exists(self.PROMPT_FILE):
-                with open(self.PROMPT_FILE, 'r', encoding='utf-8') as f:
-                    prompt_text = f.read().strip()
-                    if prompt_text:
-                        self.custom_system_prompt = prompt_text
-                        log_timestamp(f"📄 [PROMPT] Prompt încărcat din {self.PROMPT_FILE} ({len(prompt_text)} caractere)", "config")
-                        return True
-                    else:
-                        log_timestamp(f"⚠️ [PROMPT] Fișier {self.PROMPT_FILE} este gol, se folosește prompt-ul implicit.", "config")
-            else:
-                log_timestamp(f"ℹ️ [PROMPT] Fișier {self.PROMPT_FILE} nu există, se creează cu prompt-ul implicit.", "config")
-                self.save_system_prompt()
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            log_timestamp(f"📖 [PROMPTS] Prompt încărcat: {filename}", "config")
+            return content
         except Exception as e:
-            log_timestamp(f"❌ [PROMPT] Eroare la încărcarea prompt-ului: {e}", "config")
-        return False
+            log_timestamp(f"❌ [PROMPTS] Eroare la încărcare {filename}: {e}", "config")
+            return "Ești un asistent vocal prietenos și util."
     
-    def save_system_prompt(self):
-        """Salvează prompt-ul de sistem în fișierul extern."""
+    def save_prompt_to_file(self, filename, content):
+        """Salvează conținutul unui prompt în fișier."""
+        filepath = os.path.join(self.PROMPTS_FOLDER, filename)
         try:
-            with open(self.PROMPT_FILE, 'w', encoding='utf-8') as f:
-                f.write(self.custom_system_prompt)
-            log_timestamp(f"💾 [PROMPT] Prompt salvat în {self.PROMPT_FILE} ({len(self.custom_system_prompt)} caractere)", "config")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+            log_timestamp(f"💾 [PROMPTS] Prompt salvat: {filename}", "config")
             return True
         except Exception as e:
-            log_timestamp(f"❌ [PROMPT] Eroare la salvarea prompt-ului: {e}", "config")
+            log_timestamp(f"❌ [PROMPTS] Eroare la salvare {filename}: {e}", "config")
             return False
     
-    def reload_system_prompt(self):
-        """Reîncarcă prompt-ul din fișier și reinițializează modelul."""
-        if self.load_system_prompt():
-            # Reinițializăm modelul cu noul prompt (folosim modelul selectat)
-            self.model = genai.GenerativeModel(model_name=self.selected_model, system_instruction=self.custom_system_prompt)
-            self.chat = self.model.start_chat(history=[])
-            self.conversation_history = []
-            
-            # Actualizăm preview-ul în interfață
-            preview_text = self.custom_system_prompt[:100] + "..." if len(self.custom_system_prompt) > 100 else self.custom_system_prompt
-            self.prompt_preview.setText(f"Prompt actual: {preview_text}")
-            
-            log_timestamp("🔄 [PROMPT] Prompt reîncărcat și model reinițializat!", "config")
-            QMessageBox.information(self, "Succes", f"Prompt-ul a fost reîncărcat din {self.PROMPT_FILE}!\nConversația a fost resetată.")
+    def create_new_prompt(self, name, content):
+        """Creează un prompt nou cu numele și conținutul dat."""
+        name = name.strip()
+        if not name:
+            return False, "Numele nu poate fi gol."
+        
+        # Înlăturăm caractere speciale
+        safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-'))
+        safe_name = safe_name.replace(' ', '_')[:50]
+        
+        if not safe_name:
+            return False, "Numele conține doar caractere invalide."
+        
+        filename = f"{safe_name}.txt"
+        filepath = os.path.join(self.PROMPTS_FOLDER, filename)
+        
+        if os.path.exists(filepath):
+            return False, f"Promptul '{filename}' există deja."
+        
+        if self.save_prompt_to_file(filename, content):
+            log_timestamp(f"➕ [PROMPTS] Prompt nou creat: {filename}", "config")
+            return True, filename
         else:
-            QMessageBox.warning(self, "Eroare", f"Nu s-a putut reîncărca prompt-ul din {self.PROMPT_FILE}")
-    # --- SFÂRȘIT FUNCȚII NOI ---
+            return False, "Eroare la salvarea fișierului."
+    
+    def delete_prompt(self, filename):
+        """Șterge un prompt. Returnează (succes, mesaj)."""
+        all_prompts = self.load_available_prompts()
+        if len(all_prompts) <= 1:
+            return False, "Nu poți șterge ultimul prompt!"
+        
+        # Dacă promptul de șters este cel activ, comută pe altul ÎNAINTE
+        if filename == self.selected_prompt_file:
+            # Găsește alt prompt disponibil
+            other_prompts = [p for p in all_prompts if p != filename]
+            if other_prompts:
+                log_timestamp(f"🔄 [PROMPTS] Comut de pe '{filename}' pe '{other_prompts[0]}' înainte de ștergere.", "config")
+                self.switch_prompt(other_prompts[0])
+        
+        filepath = os.path.join(self.PROMPTS_FOLDER, filename)
+        try:
+            os.remove(filepath)
+            log_timestamp(f"🗑️ [PROMPTS] Prompt șters: {filename}", "config")
+            return True, "Prompt șters cu succes."
+        except Exception as e:
+            log_timestamp(f"❌ [PROMPTS] Eroare la ștergere {filename}: {e}", "config")
+            return False, f"Eroare: {e}"
+
+
+    
+
+
+    def switch_prompt(self, filename):
+        """Schimbă promptul activ, resetează conversația și contextul complet."""
+        log_timestamp(f"🔄 [PROMPTS] Schimb prompt la: {filename}", "config")
+        
+        # Încarcă noul prompt
+        new_prompt = self.load_prompt_from_file(filename)
+        self.custom_system_prompt = new_prompt
+        self.selected_prompt_file = filename
+        
+        # Reinițializează modelul cu noul prompt
+        self.model = genai.GenerativeModel(
+            model_name=self.selected_model,
+            system_instruction=self.custom_system_prompt
+        )
+        
+        # Resetează COMPLET conversația și contextul (cele 10 replici)
+        self.chat = self.model.start_chat(history=[])
+        self.conversation_history = []
+        
+        log_timestamp(f"✅ [PROMPTS] Prompt schimbat. Conversație și context resetate.", "config")
+        
+        # Salvează în config
+        self.save_config()
+        
+        # Actualizează preview-ul în Setări AI (dacă există)
+        if hasattr(self, 'prompt_preview'):
+            self.update_prompt_preview()
+    
+    def update_prompt_preview(self):
+        """Actualizează preview-ul promptului în tab Setări AI."""
+        preview_text = self.custom_system_prompt[:100] + "..." if len(self.custom_system_prompt) > 100 else self.custom_system_prompt
+        if hasattr(self, 'prompt_preview'):
+            self.prompt_preview.setText(f"Prompt actual: {preview_text}")
+
+
+    def refresh_prompt_combos(self):
+        """Reîmprospătează ambele ComboBox-uri cu lista de prompturi."""
+        prompts = self.load_available_prompts()
+        
+        # Numele fără extensie pentru afișare
+        prompt_names = [p.replace('.txt', '') for p in prompts]
+        
+        # Blocăm semnalele temporar ca să nu declanșăm switch-uri
+        self.main_prompt_combo.blockSignals(True)
+        self.settings_prompt_combo.blockSignals(True)
+        
+        # Golim și repopulăm
+        self.main_prompt_combo.clear()
+        self.settings_prompt_combo.clear()
+        self.main_prompt_combo.addItems(prompt_names)
+        self.settings_prompt_combo.addItems(prompt_names)
+        
+        # Selectăm promptul activ
+        current_name = self.selected_prompt_file.replace('.txt', '')
+        if current_name in prompt_names:
+            index = prompt_names.index(current_name)
+            self.main_prompt_combo.setCurrentIndex(index)
+            self.settings_prompt_combo.setCurrentIndex(index)
+        
+        # Deblocăm semnalele
+        self.main_prompt_combo.blockSignals(False)
+        self.settings_prompt_combo.blockSignals(False)
+        
+        log_timestamp(f"🔄 [UI] ComboBox-uri actualizate cu {len(prompts)} prompturi.", "config")
+    
+    def on_main_prompt_changed(self, prompt_name):
+        """Handler pentru schimbarea promptului din ComboBox-ul principal."""
+        if not prompt_name:
+            return
+        
+        filename = f"{prompt_name}.txt"
+        
+        # Nu facem nimic dacă e deja selectat
+        if filename == self.selected_prompt_file:
+            return
+        
+        # Schimbăm promptul (resetează conversația automat)
+        self.switch_prompt(filename)
+        
+        # Sincronizăm celălalt ComboBox
+        self.settings_prompt_combo.blockSignals(True)
+        self.settings_prompt_combo.setCurrentText(prompt_name)
+        self.settings_prompt_combo.blockSignals(False)
+        
+        log_timestamp(f"🔄 [UI] Prompt schimbat din interfața principală: {filename}", "config")
+    
+    def on_settings_prompt_changed(self, prompt_name):
+        """Handler pentru schimbarea promptului din tab Setări AI."""
+        if not prompt_name:
+            return
+        
+        filename = f"{prompt_name}.txt"
+        
+        # Nu facem nimic dacă e deja selectat
+        if filename == self.selected_prompt_file:
+            return
+        
+        # Schimbăm promptul
+        self.switch_prompt(filename)
+        
+        # Sincronizăm celălalt ComboBox
+        self.main_prompt_combo.blockSignals(True)
+        self.main_prompt_combo.setCurrentText(prompt_name)
+        self.main_prompt_combo.blockSignals(False)
+        
+        log_timestamp(f"🔄 [UI] Prompt schimbat din Setări AI: {filename}", "config")
+
+    def edit_current_prompt(self):
+        """Deschide dialog pentru editarea promptului curent."""
+        current_filename = self.selected_prompt_file
+        current_content = self.custom_system_prompt
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"✏️ Editează Prompt: {current_filename.replace('.txt', '')}")
+        dialog.setMinimumSize(600, 400)
+        layout = QVBoxLayout()
+        
+        info_label = QLabel(f"Editezi promptul: {current_filename}")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(info_label)
+        
+        prompt_editor = QTextEdit()
+        prompt_editor.setPlainText(current_content)
+        prompt_editor.setStyleSheet("font-family: 'Courier New'; font-size: 11px;")
+        layout.addWidget(prompt_editor)
+        
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+        dialog.setLayout(layout)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_content = prompt_editor.toPlainText().strip()
+            if new_content:
+                if self.save_prompt_to_file(current_filename, new_content):
+                    # Reîncarcă promptul în memorie și reinițializează modelul
+                    self.switch_prompt(current_filename)
+                    QMessageBox.information(self, "Succes", f"Promptul '{current_filename}' a fost actualizat!\nConversația a fost resetată.")
+                else:
+                    QMessageBox.warning(self, "Eroare", "Nu s-a putut salva promptul.")
+            else:
+                QMessageBox.warning(self, "Eroare", "Promptul nu poate fi gol.")
+    
+    def add_new_prompt(self):
+        """Deschide dialog pentru adăugarea unui prompt nou."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("➕ Adaugă Prompt Nou")
+        dialog.setMinimumSize(600, 400)
+        layout = QVBoxLayout()
+        
+        # Câmp pentru nume
+        name_layout = QHBoxLayout()
+        name_label = QLabel("Nume prompt:")
+        name_input = QLineEdit()
+        name_input.setPlaceholderText("Ex: Asistent Programare, Profesor Matematică...")
+        name_layout.addWidget(name_label)
+        name_layout.addWidget(name_input)
+        layout.addLayout(name_layout)
+        
+        # Câmp pentru conținut
+        content_label = QLabel("Conținut prompt:")
+        content_label.setStyleSheet("margin-top: 10px; font-weight: bold;")
+        layout.addWidget(content_label)
+        
+        prompt_editor = QTextEdit()
+        prompt_editor.setPlaceholderText("Scrie aici instrucțiunile pentru AI...")
+        prompt_editor.setStyleSheet("font-family: 'Courier New'; font-size: 11px;")
+        layout.addWidget(prompt_editor)
+        
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+        dialog.setLayout(layout)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            name = name_input.text().strip()
+            content = prompt_editor.toPlainText().strip()
+            
+            if not name:
+                QMessageBox.warning(self, "Eroare", "Trebuie să dai un nume promptului.")
+                return
+            
+            if not content:
+                QMessageBox.warning(self, "Eroare", "Promptul nu poate fi gol.")
+                return
+            
+            success, result = self.create_new_prompt(name, content)
+            if success:
+                # Reîmprospătăm ComboBox-urile
+                self.refresh_prompt_combos()
+                QMessageBox.information(self, "Succes", f"Promptul '{result}' a fost creat!")
+            else:
+                QMessageBox.warning(self, "Eroare", result)
+    
+    def delete_current_prompt(self):
+        """Șterge promptul selectat în ComboBox după confirmare."""
+        # Luăm promptul selectat din ComboBox (nu neapărat cel activ)
+        selected_name = self.settings_prompt_combo.currentText()
+        if not selected_name:
+            return
+        
+        selected_filename = f"{selected_name}.txt"
+        
+        # Confirmare
+        reply = QMessageBox.question(
+            self,
+            "Confirmare Ștergere",
+            f"Sigur vrei să ștergi promptul '{selected_name}'?\nAceastă acțiune nu poate fi anulată.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            success, message = self.delete_prompt(selected_filename)
+            if success:
+                # Reîmprospătăm ComboBox-urile
+                self.refresh_prompt_combos()
+                QMessageBox.information(self, "Succes", message)
+            else:
+                QMessageBox.warning(self, "Eroare", message)
 
     def save_config(self):
         config = {
@@ -520,7 +831,8 @@ class AdvancedVoiceChatApp(QWidget):
             "conversation_memory_limit": self.conversation_memory_limit,
             "auto_calibrate_on_start": self.auto_calibrate_on_start, # <-- SALVĂM AUTO-CALIBRARE
             "desktop_assistant_mode": self.desktop_assistant_mode,  # <-- SALVĂM DESKTOP ASSISTANT
-            "selected_model": self.selected_model  # <-- SALVĂM MODELUL AI
+            "selected_model": self.selected_model,  # <-- SALVĂM MODELUL AI
+            "selected_prompt": self.selected_prompt_file  # <-- NOU: Salvăm promptul selectat
         }
         try:
             with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -573,10 +885,11 @@ class AdvancedVoiceChatApp(QWidget):
         self.voice_config = {"margin_percent": 25}
         self.load_config()
         
-        # --- ÎNCĂRCĂM PROMPT-UL DIN FIȘIER EXTERN ---
-        self.load_system_prompt()
-        # --- SFÂRȘIT ÎNCĂRCARE PROMPT ---
-        
+        # --- INIȚIALIZĂM SISTEMUL DE PROMPTURI MULTIPLE ---
+        self.init_prompts_folder()
+        self.custom_system_prompt = self.load_prompt_from_file(self.selected_prompt_file)
+        # --- SFÂRȘIT INIȚIALIZARE PROMPTURI ---
+
         # Folosim modelul selectat din config
         self.model = genai.GenerativeModel(model_name=self.selected_model, system_instruction=self.custom_system_prompt)
         self.chat = self.model.start_chat(history=[])
@@ -591,9 +904,11 @@ class AdvancedVoiceChatApp(QWidget):
         self.pygame_check_timer.timeout.connect(self._check_pygame_playback)
         self.init_ui()
         
+        # Populăm ComboBox-urile cu prompturile disponibile
+        self.refresh_prompt_combos()
+        
         # Actualizăm preview-ul prompt-ului după ce UI-ul e creat
-        preview_text = self.custom_system_prompt[:100] + "..." if len(self.custom_system_prompt) > 100 else self.custom_system_prompt
-        self.prompt_preview.setText(f"Prompt actual: {preview_text}")
+        self.update_prompt_preview()
 
     def create_audio_tab(self):
         widget = QWidget()
@@ -994,45 +1309,84 @@ class AdvancedVoiceChatApp(QWidget):
         
         # Semafor Galben (cu cronometru)
         galben_container = QWidget()
-        galben_container_layout = QVBoxLayout(galben_container)
+        galben_container_layout = QHBoxLayout(galben_container)
         galben_container_layout.setContentsMargins(0, 0, 0, 0)
-        galben_container_layout.setSpacing(2)
-        self.semafor_galben = QLabel()
+        galben_container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Cream un QLabel pentru semafor care va fi și container
+        self.semafor_galben = QLabel(galben_container)
         self.semafor_galben.setFixedSize(40, 40)
         self.semafor_galben.setStyleSheet("background-color: #4A3A00; border-radius: 20px;")
-        self.cronometru_galben = QLabel("0.0")
+        
+        # Cronometrul devine copil direct al semaforului și este centrat
+        self.cronometru_galben = QLabel("0.0", self.semafor_galben)
         self.cronometru_galben.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cronometru_galben.setStyleSheet("color: #FFA500; font-size: 10px; font-weight: bold;")
+        self.cronometru_galben.setGeometry(0, 0, 40, 40)  # Acoperă întregul semafor
+        self.cronometru_galben.setStyleSheet("""
+            color: #1a1a1a; 
+            font-size: 20px; 
+            font-weight: bold;
+            background-color: transparent;
+        """)
         self.cronometru_galben.hide()
+        
         galben_container_layout.addWidget(self.semafor_galben)
-        galben_container_layout.addWidget(self.cronometru_galben)
         
         # Semafor Verde (cu cronometru)
         verde_container = QWidget()
-        verde_container_layout = QVBoxLayout(verde_container)
+        verde_container_layout = QHBoxLayout(verde_container)
         verde_container_layout.setContentsMargins(0, 0, 0, 0)
-        verde_container_layout.setSpacing(2)
-        self.semafor_verde = QLabel()
+        verde_container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Cream un QLabel pentru semafor care va fi și container
+        self.semafor_verde = QLabel(verde_container)
         self.semafor_verde.setFixedSize(40, 40)
         self.semafor_verde.setStyleSheet("background-color: #004A00; border-radius: 20px;")
-        self.cronometru_verde = QLabel("15")
+        
+        # Cronometrul devine copil direct al semaforului și este centrat
+        self.cronometru_verde = QLabel("15", self.semafor_verde)
         self.cronometru_verde.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cronometru_verde.setStyleSheet("color: #00FF00; font-size: 10px; font-weight: bold;")
+        self.cronometru_verde.setGeometry(0, 0, 40, 40)  # Acoperă întregul semafor
+        self.cronometru_verde.setStyleSheet("""
+            color: #1a1a1a; 
+            font-size: 20px; 
+            font-weight: bold;
+            background-color: transparent;
+        """)
         self.cronometru_verde.hide()
+        
         verde_container_layout.addWidget(self.semafor_verde)
-        verde_container_layout.addWidget(self.cronometru_verde)
         
         semafor_layout.addWidget(rosu_container)
         semafor_layout.addWidget(galben_container)
         semafor_layout.addWidget(verde_container)
         semafor_group.setLayout(semafor_layout)
         
-        # Grup Status (mijloc)
-        status_group = QGroupBox("📊 Status")
-        status_inner_layout = QVBoxLayout(status_group)
+        # Grup Status (mijloc) - cu ComboBox pentru prompturi
+        status_group = QGroupBox("📊 Status & Prompt")
+        status_inner_layout = QHBoxLayout(status_group)
+        
+        # Status label (stânga) - mai puțin spațiu
         self.status_label = QLabel("Gata de pornire")
         self.status_label.setStyleSheet("color: #95a5a6; font-size: 14px; font-weight: bold;")
-        status_inner_layout.addWidget(self.status_label)
+        status_inner_layout.addWidget(self.status_label)  # Fără stretch factor
+        
+        # Spacer elastic între status și prompt
+        status_inner_layout.addStretch(1)
+        
+        # ComboBox pentru selectare prompt (dreapta) - mai mult spațiu
+        prompt_label = QLabel("Prompt:")
+        prompt_label.setStyleSheet("color: #95a5a6; font-size: 12px; margin-left: 10px;")
+        self.main_prompt_combo = QComboBox()
+        self.main_prompt_combo.setStyleSheet("font-size: 12px; padding: 3px;")
+        self.main_prompt_combo.setSizePolicy(
+            self.main_prompt_combo.sizePolicy().horizontalPolicy(),
+            self.main_prompt_combo.sizePolicy().verticalPolicy()
+        )
+        self.main_prompt_combo.setMinimumWidth(200)  # Mai larg decât înainte
+        self.main_prompt_combo.currentTextChanged.connect(self.on_main_prompt_changed)
+        status_inner_layout.addWidget(prompt_label)
+        status_inner_layout.addWidget(self.main_prompt_combo)
         
         # Grup Asistent Desktop (dreapta) - NOU!
         assistant_group = QGroupBox("🤖 Desktop AI")
@@ -1123,6 +1477,8 @@ class AdvancedVoiceChatApp(QWidget):
         
         return widget
 
+
+
     @Slot(int)
     @Slot(int)
     def on_desktop_assistant_toggled(self, state):
@@ -1159,92 +1515,100 @@ class AdvancedVoiceChatApp(QWidget):
         self.stop_button.setEnabled(False)
 
     def create_ai_settings_tab(self):
+        """Tab pentru setările AI - Model și Prompturi."""
         widget = QWidget()
         layout = QVBoxLayout()
-        prompt_group = QGroupBox("📝 Personalitate AI")
+        
+        # --- SECȚIUNE 1: MODEL AI ---
+        model_group = QGroupBox("🤖 Model AI")
+        model_layout = QVBoxLayout()
+        
+        model_selector_layout = QHBoxLayout()
+        model_label = QLabel("Selectează modelul:")
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(list(self.available_models.keys()))
+        
+        # Setăm modelul selectat din config
+        for display_name, model_id in self.available_models.items():
+            if model_id == self.selected_model:
+                self.model_combo.setCurrentText(display_name)
+                break
+        
+        self.model_combo.currentTextChanged.connect(self.on_model_changed)
+        model_selector_layout.addWidget(model_label)
+        model_selector_layout.addWidget(self.model_combo)
+        model_layout.addLayout(model_selector_layout)
+        model_group.setLayout(model_layout)
+        
+        # --- SECȚIUNE 2: MANAGEMENT PROMPTURI ---
+        prompt_group = QGroupBox("📝 Prompturi Sistem")
         prompt_layout = QVBoxLayout()
         
-        info_label = QLabel(f"Definește personalitatea AI-ului prin intermediul unui system prompt.\nFișier extern: <b>{self.PROMPT_FILE}</b> (poate fi editat direct)")
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("font-size: 11px; color: #666; margin-bottom: 5px;")
-        prompt_layout.addWidget(info_label)
+        # ComboBox pentru selectare prompt activ
+        prompt_selector_layout = QHBoxLayout()
+        prompt_selector_label = QLabel("Prompt activ:")
+        self.settings_prompt_combo = QComboBox()
+        self.settings_prompt_combo.currentTextChanged.connect(self.on_settings_prompt_changed)
+        prompt_selector_layout.addWidget(prompt_selector_label)
+        prompt_selector_layout.addWidget(self.settings_prompt_combo, 1)
+        prompt_layout.addLayout(prompt_selector_layout)
         
-        # Layout pentru butoane (orizontal)
+        # Butoane pentru management
         buttons_layout = QHBoxLayout()
         
-        self.edit_prompt_button = QPushButton("✏️ Editează Prompt")
-        self.edit_prompt_button.setStyleSheet("background-color: #3498db; color: white; font-size: 13px; padding: 8px; font-weight: bold;")
-        self.edit_prompt_button.clicked.connect(self.open_prompt_editor)
+        self.edit_prompt_button = QPushButton("✏️ Editează")
+        self.edit_prompt_button.setStyleSheet("background-color: #3498db; color: white; font-size: 12px; padding: 8px; font-weight: bold;")
+        self.edit_prompt_button.clicked.connect(self.edit_current_prompt)
+        
+        self.add_prompt_button = QPushButton("➕ Adaugă Nou")
+        self.add_prompt_button.setStyleSheet("background-color: #27ae60; color: white; font-size: 12px; padding: 8px; font-weight: bold;")
+        self.add_prompt_button.clicked.connect(self.add_new_prompt)
+        
+        self.delete_prompt_button = QPushButton("🗑️ Șterge")
+        self.delete_prompt_button.setStyleSheet("background-color: #e74c3c; color: white; font-size: 12px; padding: 8px; font-weight: bold;")
+        self.delete_prompt_button.clicked.connect(self.delete_current_prompt)
+        
         buttons_layout.addWidget(self.edit_prompt_button)
-        
-        # BUTON NOU: Reîncarcă din fișier
-        self.reload_prompt_button = QPushButton("🔄 Reîncarcă din Fișier")
-        self.reload_prompt_button.setStyleSheet("background-color: #27ae60; color: white; font-size: 13px; padding: 8px; font-weight: bold;")
-        self.reload_prompt_button.setToolTip(f"Reîncarcă prompt-ul din {self.PROMPT_FILE}\n(util dacă ai editat fișierul direct)")
-        self.reload_prompt_button.clicked.connect(self.reload_system_prompt)
-        buttons_layout.addWidget(self.reload_prompt_button)
-        
+        buttons_layout.addWidget(self.add_prompt_button)
+        buttons_layout.addWidget(self.delete_prompt_button)
         prompt_layout.addLayout(buttons_layout)
         
-        self.prompt_preview = QLabel("Prompt actual: (se încarcă...)")
+        # Preview promptului
+        preview_label = QLabel("Preview:")
+        preview_label.setStyleSheet("font-size: 11px; color: #95a5a6; margin-top: 10px;")
+        prompt_layout.addWidget(preview_label)
+        
+        self.prompt_preview = QLabel("")
         self.prompt_preview.setWordWrap(True)
-        self.prompt_preview.setStyleSheet("font-size: 10px; color: #888; font-style: italic; padding: 5px; background-color: #f5f5f5; border-radius: 3px;")
+        self.prompt_preview.setStyleSheet("background-color: #34495e; color: #ecf0f1; padding: 10px; border-radius: 5px; font-size: 11px;")
+        self.prompt_preview.setMaximumHeight(100)
         prompt_layout.addWidget(self.prompt_preview)
         
         prompt_group.setLayout(prompt_layout)
         
-        # --- GRUP NOU: MODEL AI ---
-        model_group = QGroupBox("🤖 Model AI")
-        model_layout = QFormLayout()
-        model_info = QLabel("Selectează modelul AI folosit pentru conversație:")
-        model_info.setWordWrap(True)
-        model_info.setStyleSheet("font-size: 11px; color: #666; margin-bottom: 5px;")
-        model_layout.addRow(model_info)
-        
-        self.model_combo = QComboBox()
-        for model_name in self.available_models.keys():
-            self.model_combo.addItem(model_name)
-        
-        # Setăm modelul curent din config
-        for idx, (name, code) in enumerate(self.available_models.items()):
-            if code == self.selected_model:
-                self.model_combo.setCurrentIndex(idx)
-                break
-        
-        self.model_combo.setStyleSheet("font-size: 12px; padding: 5px;")
-        self.model_combo.currentTextChanged.connect(self.on_model_changed)
-        model_layout.addRow("Model AI:", self.model_combo)
-        
-        # Descrieri modele
-        model_desc = QLabel(
-            "<b>Gemini Flash:</b> Rapid și eficient, ideal pentru conversații zilnice<br>"
-            "<b>Gemini Pro:</b> Mai avansat, răspunsuri mai detaliate și complexe"
-        )
-        model_desc.setWordWrap(True)
-        model_desc.setStyleSheet("font-size: 10px; color: #777; font-style: italic; margin-top: 5px;")
-        model_layout.addRow(model_desc)
-        
-        model_group.setLayout(model_layout)
-        # --- SFÂRȘIT GRUP MODEL AI ---
-        
-        memory_group = QGroupBox("🧠 Memorie Conversație")
+        # --- SECȚIUNE 3: MEMORIE CONVERSAȚIE ---
+        memory_group = QGroupBox("💾 Memorie Conversație")
         memory_layout = QFormLayout()
-        memory_info = QLabel("Numărul de schimburi de replici pe care AI-ul le păstrează în memorie:")
-        memory_info.setWordWrap(True)
-        memory_info.setStyleSheet("font-size: 11px; color: #666; margin-bottom: 5px;")
-        memory_layout.addRow(memory_info)
+        
         self.memory_spinbox = QSpinBox()
         self.memory_spinbox.setRange(1, 50)
-        self.memory_spinbox.setValue(10)
-        self.memory_spinbox.setSuffix(" replici")
-        self.memory_spinbox.setStyleSheet("font-size: 12px; padding: 5px;")
+        self.memory_spinbox.setValue(self.conversation_memory_limit)
+        self.memory_spinbox.setSuffix(" schimburi")
         self.memory_spinbox.valueChanged.connect(self.on_memory_changed)
-        memory_layout.addRow("Limită memorie:", self.memory_spinbox)
+        memory_layout.addRow("Păstrează ultimele:", self.memory_spinbox)
+        
+        memory_info = QLabel("Un schimb = un mesaj de la tine + răspunsul AI.")
+        memory_info.setStyleSheet("color: #95a5a6; font-size: 10px; font-style: italic;")
+        memory_layout.addRow(memory_info)
+        
         memory_group.setLayout(memory_layout)
+        
+        # --- ASAMBLARE FINALĂ ---
+        layout.addWidget(model_group)
         layout.addWidget(prompt_group)
-        layout.addWidget(model_group)  # <-- ADĂUGĂM GRUPA MODEL AI
         layout.addWidget(memory_group)
         layout.addStretch()
+        
         widget.setLayout(layout)
         return widget
 
@@ -1467,7 +1831,8 @@ if __name__ == "__main__":
     log_timestamp("🎤 CHAT VOCAL AVANSAT CU GEMINI AI (STREAMING) 🎤", "app")
     log_timestamp("=" * 60, "app")
     
-    cleanup_temp_files() # <-- AICI ESTE LINIA NOUĂ
+    cleanup_temp_files()
+    cleanup_screenshots_folder() # <-- AICI ESTE LINIA NOUĂ
     
     app = QApplication(sys.argv)
     window = AdvancedVoiceChatApp()

@@ -1,5 +1,5 @@
 {
-    "threshold": 4426,
+    "threshold": 3209,
     "pause_duration": 1.5,
     "max_speech_duration": 15,
     "enable_echo_cancellation": false,
@@ -8,5 +8,6 @@
     "conversation_memory_limit": 10,
     "auto_calibrate_on_start": true,
     "desktop_assistant_mode": true,
-    "selected_model": "gemini-flash-latest"
+    "selected_model": "gemini-flash-latest",
+    "selected_prompt": "Manuela.txt"
 }
