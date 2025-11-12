@@ -30,3 +30,4 @@ sounddevice
 numpy
 
 pillow
+markdown

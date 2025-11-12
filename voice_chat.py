@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                                QSlider, QMessageBox, QCheckBox, QTabWidget, QSpinBox, QDialog,
                                QDialogButtonBox, QComboBox)
 from PySide6.QtCore import QThread, Signal, QObject, Qt, QTimer, Slot
-from PySide6.QtGui import QColor, QFont, QScreen 
+from PySide6.QtGui import QColor, QFont, QScreen, QTextCursor
 import google.generativeai as genai
 from dotenv import load_dotenv
 import edge_tts
@@ -55,6 +55,13 @@ from PIL import ImageGrab
 
 load_dotenv()
 
+
+# ADAUGĂ IMPORT ȘI VERIFICARE PENTRU LIBRĂRIA MARKDOWN
+try:
+    import markdown
+except ImportError:
+    QMessageBox.critical(None, "Librărie Lipsă", "Te rog instalează librăria 'markdown' folosind comanda: pip install markdown")
+    sys.exit(1)
 
 # =================================================================================
 # ⭐ FUNCȚIE NOUĂ PENTRU CURĂȚAREA FIȘIERELOR TEMPORARE
@@ -749,7 +756,7 @@ class AdvancedVoiceChatApp(QWidget):
             self.update_status("Gata de conversație")
             self._update_semafor("rosu")
     
-    # ... (restul funcțiilor rămân neschimbate) ...
+    
     def get_gemini_response(self, text):
         """Obține răspuns de la Gemini, cu sau fără screenshot, în funcție de mod."""
         QTimer.singleShot(0, lambda: self.update_status("⏳ Aștept răspunsul..."))
@@ -794,18 +801,25 @@ class AdvancedVoiceChatApp(QWidget):
                     screenshot.save(save_path)
                     log_timestamp(f"💾 [ASSISTANT] Salvat: {save_path}", "app")
                     
-                    # Creăm model viziune - FOLOSIM MODELUL SELECTAT
-                    vision_model = genai.GenerativeModel(self.selected_model)
+                    # Creăm model viziune - FOLOSIM MODELUL SELECTAT ȘI SYSTEM PROMPT-UL
+                    # ⭐ ATENȚIE: Aici este cheia! Folosim system_instruction din self.custom_system_prompt
+                    vision_model = genai.GenerativeModel(
+                        model_name=self.selected_model,
+                        system_instruction=self.custom_system_prompt  # ⭐ ADAUGĂ ACEASTĂ LINIE!
+                    )
                     model_name = "Flash" if "flash" in self.selected_model.lower() else "Pro"
-                    log_timestamp(f"🤖 [ASSISTANT] Model Gemini {model_name} (viziune) init", "app")
+                    log_timestamp(f"🤖 [ASSISTANT] Model Gemini {model_name} (viziune) init cu system prompt", "app")
                     
                     # Creăm chat cu istoric TEXT-ONLY
                     chat_with_history = vision_model.start_chat(history=self.conversation_history[:-1])
                     log_timestamp(f"📚 [ASSISTANT] Chat cu {len(self.conversation_history)-1} mesaje istoric (text-only)", "gemini")
                     
-                    # Prompt pentru mesajul curent cu screenshot
-                    prompt_text = f"{text}\n\n[Analizează screenshot-ul ecranului meu atașat și răspunde în contextul imaginii. Referă-te specific la ce vezi pe ecran.]"
-                    log_timestamp(f"📤 [ASSISTANT] Trimit multimodal: text + screenshot", "gemini")
+                    # ⭐⭐⭐ MODIFICAREA CRITICĂ - NU mai adăugăm instrucțiuni forțate!
+                    # Trimitem textul EXACT așa cum este, fără instrucțiuni suplimentare
+                    # System prompt-ul se va ocupa de când să analizeze screenshot-ul
+                    prompt_text = text  # ⭐ SIMPLIFICAT! Doar textul user, fără instrucțiuni extra
+                    
+                    log_timestamp(f"📤 [ASSISTANT] Trimit multimodal: text + screenshot (fără instrucțiuni forțate)", "gemini")
                     
                     # Trimitem mesajul CURENT cu screenshot
                     response_stream = chat_with_history.send_message(
@@ -1064,6 +1078,25 @@ class AdvancedVoiceChatApp(QWidget):
         
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
+
+
+        # Adăugăm CSS pentru a formata blocurile de cod și a îmbunătăți aspectul general
+        self.chat_display.document().setDefaultStyleSheet("""
+            p { margin: 0; padding: 2px; }
+            pre {
+                background-color: #1e1e1e; /* Culoare de fundal similară cu IDE-urile */
+                color: #d4d4d4;           /* Culoare text deschisă */
+                padding: 10px;
+                border-radius: 5px;
+                font-family: 'Courier New', Courier, monospace;
+                white-space: pre-wrap;     /* Asigură împachetarea textului */
+                display: block;
+            }
+            code {
+                font-family: 'Courier New', Courier, monospace;
+            }
+        """)
+
         self.chat_display.setStyleSheet("background-color: #2c3e50; color: white; font-size: 12px; padding: 10px;")
         chat_layout.addWidget(self.chat_display)
         
@@ -1379,22 +1412,45 @@ class AdvancedVoiceChatApp(QWidget):
             self.semafor_galben.setStyleSheet("background-color: #FFA500; border-radius: 20px;")
             self.cronometru_galben.show()
             self.cronometru_verde.hide()
+
+
     def add_to_chat(self, user, message):
-        """Adaugă mesaj în chat cu formatare color și afișare model AI."""
-        # Determinăm culoarea în funcție de user
+        """Adaugă mesaj în chat cu formatare Markdown, culori și auto-scroll."""
+        
+        # Mută cursorul la sfârșitul documentului pentru a adăuga conținut nou
+        cursor = self.chat_display.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.chat_display.setTextCursor(cursor)
+
+        # Determinăm culoarea și numele afișat în funcție de utilizator
         if user == "Tu":
             color = "#2980b9"
             display_name = user
         elif user == "Gemini":
             color = "#8e44ad"
-            # Afișăm numele modelului pentru Gemini
             model_display_name = "Flash" if "flash" in self.selected_model.lower() else "Pro"
             display_name = f"Gemini {model_display_name}"
         else:
             color = "#16a085"
             display_name = user
-        
-        self.chat_display.append(f"<b style='color:{color};'>{display_name}:</b> {message}")
+
+        # Creăm antetul mesajului (ex: "Tu:", "Gemini Flash:")
+        header_html = f"<b style='color:{color};'>{display_name}:</b>"
+
+        # Convertim mesajul din Markdown în HTML.
+        # 'fenced_code' - pentru blocuri de cod (```)
+        # 'nl2br' - convertește newline-urile (\n) în tag-uri <br> pentru a păstra paragrafele
+        message_html = markdown.markdown(message, extensions=['fenced_code', 'nl2br'])
+
+        # Inserăm antetul și mesajul formatat
+        # Folosim insertHtml pentru a păstra formatarea
+        self.chat_display.insertHtml(f"{header_html}<br>{message_html}<br>")
+
+        # Asigurăm auto-scroll la ultimul mesaj
+        self.chat_display.ensureCursorVisible()
+
+
+
     def closeEvent(self, event):
         log_timestamp("🛑 Se închide aplicația...", "app")
         self.save_config()
