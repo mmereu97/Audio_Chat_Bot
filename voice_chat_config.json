@@ -9,5 +9,7 @@
     "auto_calibrate_on_start": true,
     "desktop_assistant_mode": true,
     "selected_model": "gemini-flash-latest",
-    "selected_prompt": "Manuela.txt"
+    "selected_prompt": "Manuela.txt",
+    "compact_mode": true,
+    "always_on_top": false
 }

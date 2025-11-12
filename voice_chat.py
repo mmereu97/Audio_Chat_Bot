@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                                QLineEdit, QPushButton, QTextEdit, QGroupBox, QFormLayout,
                                QSlider, QMessageBox, QCheckBox, QTabWidget, QSpinBox, QDialog,
                                QDialogButtonBox, QComboBox, QStackedLayout)
-from PySide6.QtCore import QThread, Signal, QObject, Qt, QTimer, Slot
+from PySide6.QtCore import QThread, Signal, QObject, Qt, QTimer, Slot, QSize
 from PySide6.QtGui import QColor, QFont, QScreen, QTextCursor
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -486,9 +486,15 @@ class AdvancedVoiceChatApp(QWidget):
         self.auto_calibrate_on_start = default_config["auto_calibrate_on_start"]
         self.desktop_assistant_mode = default_config["desktop_assistant_mode"]
         self.selected_model = default_config["selected_model"]
-        self.selected_prompt_file = default_config["selected_prompt"]  # <-- NOU
-        
+        self.selected_prompt_file = default_config["selected_prompt"]  
+
         log_timestamp(f"⚙️ [CONFIG] Auto-calibrare la pornire încărcat: {self.auto_calibrate_on_start}", "config")
+
+        self.compact_mode = default_config.get("compact_mode", False)
+        self.is_pinned = default_config.get("always_on_top", False)
+        log_timestamp(f"⚙️ [CONFIG] Compact mode: {self.compact_mode}, Always on top: {self.is_pinned}", "config")
+
+
         log_timestamp(f"⚙️ [CONFIG] Desktop Assistant Mode încărcat: {self.desktop_assistant_mode}", "config")
         log_timestamp(f"🤖 [CONFIG] Model AI încărcat: {self.selected_model}", "config")
         log_timestamp(f"📝 [CONFIG] Prompt selectat: {self.selected_prompt_file}", "config")
@@ -832,7 +838,9 @@ class AdvancedVoiceChatApp(QWidget):
             "auto_calibrate_on_start": self.auto_calibrate_on_start, # <-- SALVĂM AUTO-CALIBRARE
             "desktop_assistant_mode": self.desktop_assistant_mode,  # <-- SALVĂM DESKTOP ASSISTANT
             "selected_model": self.selected_model,  # <-- SALVĂM MODELUL AI
-            "selected_prompt": self.selected_prompt_file  # <-- NOU: Salvăm promptul selectat
+            "selected_prompt": self.selected_prompt_file,  # <-- NOU: Salvăm promptul selectat
+            "compact_mode": self.compact_mode,  # <-- NOU
+            "always_on_top": self.is_pinned    # <-- NOU
         }
         try:
             with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -896,6 +904,14 @@ class AdvancedVoiceChatApp(QWidget):
         self.conversation_history = []
         self.voice_enabled = self.is_muted = False
         self.voice_worker = self.voice_thread = None
+
+        # --- VARIABILE PENTRU COMPACT MODE ---
+        self.compact_mode = False
+        self.is_pinned = False
+        self.normal_size = QSize(900, 700)
+        self.compact_size = QSize(400, 85)
+        self.saved_bottom_position = None  # ← NOU: salvăm bottom-ul fix
+
         self.gemini_response_signal.connect(self.display_gemini_response)
         self.streaming_tts.signals.all_sentences_finished.connect(self.on_all_sentences_finished)
         self.streaming_tts.signals.error_occurred.connect(self.on_streaming_tts_error)
@@ -907,6 +923,13 @@ class AdvancedVoiceChatApp(QWidget):
         # Populăm ComboBox-urile cu prompturile disponibile
         self.refresh_prompt_combos()
         
+        # Aplicăm starea salvată pentru compact mode și pin
+        if self.is_pinned:
+            self.toggle_always_on_top()  # Setează pin
+        if self.compact_mode:
+            self.toggle_compact_mode()  # Setează compact
+
+
         # Actualizăm preview-ul prompt-ului după ce UI-ul e creat
         self.update_prompt_preview()
 
@@ -1146,11 +1169,22 @@ class AdvancedVoiceChatApp(QWidget):
                     full_response = ""
                     chunk_count = 0
                     for chunk in response_stream:
-                        if chunk.text:
-                            full_response += chunk.text
-                            chunk_count += 1
-                            if chunk_count % 5 == 0:
-                                log_timestamp(f"📦 [ASSISTANT] Chunk #{chunk_count}, total: {len(full_response)} chars", "gemini_debug")
+                        # Verificăm dacă chunk-ul are conținut valid
+                        try:
+                            if chunk.text:
+                                full_response += chunk.text
+                                chunk_count += 1
+                                if chunk_count % 5 == 0:
+                                    log_timestamp(f"📦 [ASSISTANT] Chunk #{chunk_count}, total: {len(full_response)} chars", "gemini_debug")
+                        except ValueError:
+                            # Chunk-ul nu are text valid (blocat de safety sau finish_reason != STOP)
+                            log_timestamp(f"⚠️ [ASSISTANT] Chunk fără text valid (finish_reason: {chunk.candidates[0].finish_reason})", "gemini")
+                            continue
+                    
+                    # Verificăm dacă am primit vreun răspuns
+                    if not full_response:
+                        full_response = "⚠️ Răspunsul a fost blocat de sistemul de siguranță. Încearcă o altă întrebare sau dezactivează Desktop Assistant."
+                        log_timestamp(f"⚠️ [ASSISTANT] Răspuns blocat complet", "gemini")
                     
                     log_timestamp(f"✅ [ASSISTANT] Răspuns complet! {chunk_count} chunks, {len(full_response)} chars", "gemini")
                     log_timestamp(f"💬 [ASSISTANT] Preview: '{full_response[:150]}...'", "gemini_debug")
@@ -1276,6 +1310,8 @@ class AdvancedVoiceChatApp(QWidget):
         self.setWindowTitle("🎤 Chat Vocal Avansat cu Gemini AI")
         self.setMinimumSize(900, 700)
         main_layout = QVBoxLayout()
+        
+        # Creăm tab-urile
         self.tabs = QTabWidget()
         conversation_tab = self.create_conversation_tab()
         audio_tab = self.create_audio_tab()
@@ -1283,9 +1319,39 @@ class AdvancedVoiceChatApp(QWidget):
         self.tabs.addTab(conversation_tab, "💬 Conversație")
         self.tabs.addTab(audio_tab, "🎤 Audio")
         self.tabs.addTab(ai_settings_tab, "🤖 Setări AI")
+        
         main_layout.addWidget(self.tabs)
+        
+        # --- INPUT AREA + BUTOANE (VIZIBIL ÎN AMBELE MODURI) ---
+        input_layout = QHBoxLayout()
+        
+        self.text_input = QLineEdit()
+        self.text_input.setPlaceholderText("Scrie un mesaj sau folosește microfonul...")
+        self.text_input.setStyleSheet("font-size: 13px; padding: 8px;")
+        self.text_input.returnPressed.connect(self.send_text_message)
+        
+        self.send_button = QPushButton("📤 Trimite")
+        self.send_button.setStyleSheet("background-color: #3498db; color: white; font-size: 13px; padding: 8px 15px; font-weight: bold;")
+        self.send_button.clicked.connect(self.send_text_message)
+        
+        self.compact_button = QPushButton("🔲 Compact")
+        self.compact_button.setStyleSheet("background-color: #3498db; color: white; font-size: 12px; padding: 8px 12px; font-weight: bold;")
+        self.compact_button.clicked.connect(self.toggle_compact_mode)
+        
+        self.pin_button = QPushButton("📍 Pin")
+        self.pin_button.setStyleSheet("background-color: #95a5a6; color: white; font-size: 12px; padding: 8px 12px; font-weight: bold;")
+        self.pin_button.clicked.connect(self.toggle_always_on_top)
+        
+        input_layout.addWidget(self.text_input)
+        input_layout.addWidget(self.send_button)
+        input_layout.addWidget(self.compact_button)
+        input_layout.addWidget(self.pin_button)
+        
+        main_layout.addLayout(input_layout)
+        # --- SFÂRȘIT INPUT AREA ---
+        
         self.setLayout(main_layout)
-
+        
     def create_conversation_tab(self):
         """Creează tab-ul principal de conversație"""
         widget = QWidget()
@@ -1454,26 +1520,11 @@ class AdvancedVoiceChatApp(QWidget):
         self.chat_display.setStyleSheet("background-color: #2c3e50; color: white; font-size: 12px; padding: 10px;")
         chat_layout.addWidget(self.chat_display)
         
-        # --- SECȚIUNEA 4: INPUT TEXT ---
-        input_layout = QHBoxLayout()
-        
-        self.text_input = QLineEdit()
-        self.text_input.setPlaceholderText("Scrie un mesaj sau folosește microfonul...")
-        self.text_input.setStyleSheet("font-size: 13px; padding: 8px;")
-        self.text_input.returnPressed.connect(self.send_text_message)
-        
-        self.send_button = QPushButton("📤 Trimite")
-        self.send_button.setStyleSheet("background-color: #3498db; color: white; font-size: 13px; padding: 8px 15px; font-weight: bold;")
-        self.send_button.clicked.connect(self.send_text_message)
-        
-        input_layout.addWidget(self.text_input)
-        input_layout.addWidget(self.send_button)
-        
-        # --- ASAMBLARE FINALĂ LAYOUT ---
+        # --- ASAMBLARE FINALĂ LAYOUT (INPUT AREA SE MUTĂ ÎN MAIN_LAYOUT) ---
         layout.addLayout(status_layout)
         layout.addLayout(buttons_layout)
         layout.addWidget(chat_group, 1)
-        layout.addLayout(input_layout)
+        # input_layout se mută în init_ui() pentru a fi vizibil în ambele moduri
         
         return widget
 
@@ -1812,6 +1863,85 @@ class AdvancedVoiceChatApp(QWidget):
 
         # Asigurăm auto-scroll la ultimul mesaj
         self.chat_display.ensureCursorVisible()
+
+
+    def toggle_compact_mode(self):
+        """Comută între modul normal și compact - linia de jos rămâne fixă."""
+        self.compact_mode = not self.compact_mode
+        
+        if self.compact_mode:
+            # --- MODUL ULTRA COMPACT ---
+            log_timestamp("🔲 [UI] Comutare la Mod Compact", "app")
+            
+            # Salvăm poziția bottom DOAR la prima intrare în compact
+            if self.saved_bottom_position is None:
+                self.saved_bottom_position = self.y() + self.height()
+            
+            # Schimbă textul butonului
+            self.compact_button.setText("🔲 Normal")
+            self.compact_button.setStyleSheet("background-color: #27ae60; color: white; font-size: 12px; padding: 8px 12px; font-weight: bold;")
+            
+            # Ascunde tab-urile
+            self.tabs.setVisible(False)
+            
+            # Calculează noua poziție Y pentru a menține bottom-ul fix
+            compact_height = 80
+            new_y = self.saved_bottom_position - compact_height
+            
+            # Setează poziția și dimensiunea
+            current_width = self.width()
+            self.setGeometry(self.x(), new_y, current_width, compact_height)
+            self.setFixedHeight(compact_height)
+            
+        else:
+            # --- MODUL NORMAL ---
+            log_timestamp("🔲 [UI] Comutare la Mod Normal", "app")
+            
+            # Schimbă textul butonului
+            self.compact_button.setText("🔲 Compact")
+            self.compact_button.setStyleSheet("background-color: #3498db; color: white; font-size: 12px; padding: 8px 12px; font-weight: bold;")
+            
+            # Arată tab-urile
+            self.tabs.setVisible(True)
+            
+            # Calculează noua poziție Y folosind bottom-ul salvat
+            new_height = self.normal_size.height()
+            new_y = self.saved_bottom_position - new_height
+            
+            # Restaurează dimensiune normală
+            self.setMinimumSize(800, 600)
+            self.setMaximumSize(16777215, 16777215)
+            self.setGeometry(self.x(), new_y, self.normal_size.width(), new_height)
+            
+            # Resetăm saved_bottom pentru next cycle (se va recalcula la următorul compact)
+            self.saved_bottom_position = None
+        
+        # Salvează starea
+        self.save_config()
+        log_timestamp(f"✅ [UI] Compact mode: {self.compact_mode}", "config")
+
+    
+    def toggle_always_on_top(self):
+        """Toggle always-on-top pentru fereastră."""
+        self.is_pinned = not self.is_pinned
+        
+        if self.is_pinned:
+            log_timestamp("📌 [UI] Always-on-top activat", "app")
+            self.pin_button.setText("📌 Pinned")
+            self.pin_button.setStyleSheet("background-color: #e67e22; color: white; font-size: 12px; padding: 5px 10px; font-weight: bold;")
+            self.setWindowFlags(self.windowFlags() | Qt.WindowFlag.WindowStaysOnTopHint)
+        else:
+            log_timestamp("📍 [UI] Always-on-top dezactivat", "app")
+            self.pin_button.setText("📍 Pin")
+            self.pin_button.setStyleSheet("background-color: #95a5a6; color: white; font-size: 12px; padding: 5px 10px; font-weight: bold;")
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowFlag.WindowStaysOnTopHint)
+        
+        # IMPORTANT: show() pentru a aplica window flags
+        self.show()
+        
+        # Salvează starea
+        self.save_config()
+        log_timestamp(f"✅ [UI] Always on top: {self.is_pinned}", "config")
 
 
 
