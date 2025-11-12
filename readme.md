@@ -1,12 +1,12 @@
 # 🎤 Chat Vocal Avansat cu Gemini AI
 
-> Asistent vocal inteligent cu suport multimodal (text + screenshot) și sistem avansat de detectare vocală
+> Asistent vocal inteligent cu suport multimodal (text + screenshot), sistem avansat de prompturi multiple și detectare vocală de ultimă generație
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg)](https://github.com)
 
-Un asistent AI vocal complet funcțional construit cu Google Gemini API, care combină recunoaștere vocală, text-to-speech și capacități multimodale într-o interfață prietenoasă Qt.
+Un asistent AI vocal complet funcțional construit cu Google Gemini API, care combină recunoaștere vocală, text-to-speech și capacități multimodale într-o interfață prietenoasă Qt. **Sistem inovator de prompturi multiple** pentru personalizare instantanee a personalității AI-ului.
 
 ---
 
@@ -22,6 +22,15 @@ Un asistent AI vocal complet funcțional construit cu Google Gemini API, care co
 - ✅ **Streaming responses** - răspunsuri în timp real
 - ✅ **Memorie conversațională** configurabilă (1-50 replici)
 - ✅ **Auto-calibrare zgomot ambient** pentru precizie maximă
+- ✅ **Selectare model AI** - Flash (rapid) sau Pro (avansat)
+
+### 📝 **Sistem Prompturi Multiple** ⭐ NOU!
+- 📁 **Management complet** - creează, editează, șterge prompturi
+- 🔄 **Schimbare instantanee** - ComboBox în interfața principală
+- 💾 **Fișiere separate** - folder `prompts/` cu fișiere `.txt` editabile
+- 🎭 **Personalități multiple** - asistent tehnic, profesor, prieten casual
+- ⚡ **Resetare automată** context la schimbare prompt
+- 🔖 **Memorie persistentă** - își amintește promptul selectat
 
 ### 🤖 Desktop Assistant (Multimodal)
 - 📸 **Screenshot automat** al ecranului la fiecare întrebare
@@ -35,12 +44,16 @@ Un asistent AI vocal complet funcțional construit cu Google Gemini API, care co
 - 🔇 **Anulare ecou** - previne feedback AI→microfon
 - 🚦 **Semafor vizual** cu stări (roșu/galben/verde)
 - ⏹️ **Stop forțat** redare audio
+- **⏱️ Cronometrele vizuale** ⭐ NOU!
+  - Afișare timp rămas pe semafor verde (max 15s)
+  - Afișare progres pauză pe semafor galben
+  - Centrate în mijlocul cercurilor, vizibile și clare
 
-### 📝 Sistem Prompt Extern
-- 📄 **Fișier text editabil** (`system_prompt.txt`)
-- 🔄 **Reload la cerere** fără restart aplicație
-- ✏️ **Editor integrat** sau editare externă (Notepad, VS Code)
-- 💾 **Versioning-friendly** - ideal pentru Git
+### 📦 Distribuție și Împachetare ⭐ NOU!
+- 🎁 **Build ca EXE** - fișier `.spec` optimizat pentru PyInstaller
+- 🤖 **Script automat** - `build.bat` pentru Windows
+- 📋 **Documentație completă** - ghiduri pas-cu-pas pentru build
+- 💼 **Portabil** - un singur executabil, nu necesită Python
 
 ---
 
@@ -48,9 +61,9 @@ Un asistent AI vocal complet funcțional construit cu Google Gemini API, care co
 
 > *Screenshots vor fi adăugate curând*
 
-| Interfață principală | Setări audio | Desktop Assistant |
+| Interfață principală | Setări audio | Prompturi Multiple |
 |:---:|:---:|:---:|
-| ![Main](docs/screenshots/main.png) | ![Audio](docs/screenshots/audio.png) | ![Desktop](docs/screenshots/desktop.png) |
+| ![Main](docs/screenshots/main.png) | ![Audio](docs/screenshots/audio.png) | ![Prompts](docs/screenshots/prompts.png) |
 
 ---
 
@@ -59,7 +72,7 @@ Un asistent AI vocal complet funcțional construit cu Google Gemini API, care co
 ### Sistem de Operare
 - ✅ Windows 10/11 (testat)
 - ✅ Linux (Ubuntu 20.04+)
-- ⚠️ macOS (netested - ar trebui să funcționeze)
+- ⚠️ macOS (netest - ar trebui să funcționeze)
 
 ### Python
 - **Python 3.8 sau mai nou**
@@ -68,8 +81,8 @@ Un asistent AI vocal complet funcțional construit cu Google Gemini API, care co
 ### Hardware
 - 🎤 Microfon funcțional
 - 🔊 Difuzoare/căști pentru TTS
-- 💻 Minim 4GB RAM (recomandat 8GB)
-- 📡 Conexiune la internet pentru API
+- 💻 Minim 4GB RAM (recomandat 8GB pentru PyTorch)
+- 📡 Conexiune la internet pentru API și modele
 
 ---
 
@@ -109,6 +122,7 @@ torch>=2.0.0
 sounddevice>=0.4.6
 numpy>=1.24.0
 Pillow>=10.0.0
+markdown>=3.4.0
 ```
 
 ### 4. Obține API Key Google Gemini
@@ -137,8 +151,8 @@ python voice_chat.py
 La prima pornire, aplicația va:
 1. ✅ Cere cheia API (dacă nu există `.env`)
 2. ✅ Încărca modelul Silero VAD (~100MB, se descarcă o singură dată)
-3. ✅ Crea fișierele de configurare
-4. ✅ Crea `system_prompt.txt` cu prompt implicit
+3. ✅ Crea fișierele de configurare (`voice_chat_config.json`)
+4. ✅ Crea folderul `prompts/` cu promptul default
 5. ✅ Crea folderul `screenshots/` pentru Desktop Assistant
 
 ---
@@ -155,12 +169,14 @@ La prima pornire, aplicația va:
 
 #### Control în Timp Real
 - **Verde 🟢** - Ești detectat că vorbești
+  - **Cronometru verde** - arată timpul rămas (max 15s)
 - **Galben 🟡** - Pauză (se pregătește să proceseze)
+  - **Cronometru galben** - arată progresul pauzei
 - **Roșu 🔴** - Nu asculți (AI vorbește sau sistem ocupat)
 
 #### Buton Mute
 - Click **"🔇 Mute"** pentru a pausa temporar ascultarea
-- Useful când AI-ul vorbește și nu vrei să-l întrerupi
+- Util când AI-ul vorbește și nu vrei să-l întrerupi
 
 ### 💬 Chat Text
 
@@ -168,10 +184,76 @@ La prima pornire, aplicația va:
 2. Apasă **Enter** sau click **"📤 Trimite"**
 3. Primești răspuns instant (cu sau fără TTS)
 
+### 📝 Sistem Prompturi Multiple ⭐ FEATURE PRINCIPAL
+
+#### Utilizare Rapidă
+1. **În interfața principală** (zona Status & Prompt)
+   - Click pe **ComboBox-ul "Prompt:"** (în dreapta)
+   - Selectează promptul dorit din listă
+   - AI-ul își schimbă instant personalitatea
+   - **Conversația și contextul se resetează automat**
+
+#### Management Prompturi (Tab Setări AI)
+
+**📝 Creează Prompt Nou:**
+1. Click **"➕ Adaugă Nou"**
+2. Introdu **nume** descriptiv (ex: "Asistent Programare")
+3. Scrie **conținutul** promptului
+4. **OK** → Gata! Apare în listă
+
+**✏️ Editează Prompt:**
+1. Selectează promptul din ComboBox
+2. Click **"✏️ Editează"**
+3. Modifică textul
+4. **OK** → Salvare automată + reinițializare AI
+
+**🗑️ Șterge Prompt:**
+1. Selectează promptul din ComboBox
+2. Click **"🗑️ Șterge"**
+3. Confirmare → Promptul e șters
+4. ⚠️ Dacă ștergi promptul activ, se comută automat pe altul
+
+#### Exemple de Prompturi
+
+**Asistent Tehnic:**
+```
+Ești un expert tehnic specializat în programare și IT. 
+Răspunsurile tale sunt precise, detaliate și bazate pe best practices.
+Explici concepte complexe clar și oferă exemple de cod când e relevant.
+```
+
+**Profesor de Matematică:**
+```
+Ești un profesor de matematică pasionat și răbdător.
+Explici concepte matematice pas cu pas, folosind exemple simple.
+Încurajezi elevul și verifici înțelegerea înainte de a merge mai departe.
+```
+
+**Prieten Casual:**
+```
+Ești un prieten de încredere care vorbește natural și relaxat. 
+Folosești umor când e cazul și explici lucrurile simplu.
+Ești empatic și deschis la conversații despre orice subiect.
+```
+
+**Asistent Creativ:**
+```
+Ești un asistent creativ care ajută la brainstorming și idei inovatoare.
+Gândești out-of-the-box și propui soluții neconvenționale.
+Încurajezi experimentarea și nu te temi de idei îndrăznețe.
+```
+
+#### Editare Manuală (Avansați)
+Poți edita fișierele direct în folderul `prompts/`:
+1. Deschide `prompts/numele_prompt.txt` cu orice editor
+2. Modifică conținutul
+3. Salvează fișierul
+4. În aplicație: schimbă pe alt prompt și înapoi pentru reload
+
 ### 🤖 Desktop Assistant Mode
 
 #### Activare
-1. Bifează **"🤖 Activează Asistent Desktop"** (în casetă în dreapta sus)
+1. Bifează **"🤖 Activează"** (casetă în partea de sus)
 2. Pune o întrebare despre ecran: *"Ce aplicații văd deschise?"*
 3. AI-ul va primi automat un screenshot + textul tău
 4. Răspunsul va fi contextualizat la ce vede pe ecran
@@ -183,7 +265,7 @@ La prima pornire, aplicația va:
 - 🎨 "Ce culori domină în imaginea asta?"
 - 🖥️ "Câte ferestre am deschise?"
 
-**Notă:** Screenshot-urile sunt salvate în `screenshots/` pentru referință.
+**Notă:** Screenshot-urile sunt salvate în `screenshots/` pentru referință și șterse automat la pornire.
 
 ---
 
@@ -209,34 +291,12 @@ La prima pornire, aplicația va:
 
 ### 🤖 Tab Setări AI
 
-#### System Prompt
-Prompt-ul definește personalitatea AI-ului.
+#### Model AI
+Alege între:
+- **Gemini Flash** - Rapid, eficient, ideal pentru uz zilnic
+- **Gemini Pro** - Mai avansat, răspunsuri mai detaliate
 
-**Editare în aplicație:**
-1. Click **"✏️ Editează Prompt"**
-2. Modifică textul
-3. **OK** → salvare în `system_prompt.txt`
-
-**Editare externă:**
-1. Deschide `system_prompt.txt` cu orice editor
-2. Modifică cum vrei
-3. Salvează
-4. În aplicație: **"🔄 Reîncarcă din Fișier"**
-
-**Exemple de prompt-uri:**
-```
-# Asistent casual
-Ești un prieten de încredere care vorbește natural și relaxat. 
-Folosești umor când e cazul și explici lucrurile simplu.
-
-# Asistent tehnic
-Ești un expert tehnic specializat în programare și IT. 
-Răspunsurile tale sunt precise, detaliate și bazate pe best practices.
-
-# Asistent creativ
-Ești un asistent creativ care ajută la brainstorming și idei inovatoare.
-Gândești out-of-the-box și propui soluții neconvenționale.
-```
+Schimbarea modelului resetează conversația.
 
 #### Memorie Conversație
 - **1-50 replici** (implicit 10)
@@ -255,18 +315,68 @@ voice-chat-gemini/
 ├── .gitignore                       # Fișiere ignorate de Git
 ├── README.md                        # Acest fișier
 │
-├── system_prompt.txt                # Prompt-ul de sistem (editabil)
+├── prompts/                         # ⭐ NOU: Prompturi multiple
+│   ├── default.txt                  # Prompt implicit
+│   ├── asistent_cod.txt            # Prompt pentru programare
+│   ├── profesor.txt                # Prompt educațional
+│   └── casual.txt                  # Prompt conversațional
+│
 ├── voice_chat_config.json           # Configurări (auto-generat)
 │
 ├── screenshots/                     # Screenshot-uri Desktop Assistant
-│   └── screenshot_2025-11-11_*.png
+│   └── screenshot_2025-*.png
 │
-├── docs/                            # Documentație
-│   ├── screenshots/                 # Imagini pentru README
-│   └── PROMPT_EXTERN_DOCUMENTATIE.md
+├── build/                           # ⭐ NOU: Fișiere build (opțional)
+│   ├── voice_chat.spec             # Configurare PyInstaller
+│   ├── build.bat                   # Script automat build
+│   └── BUILD_INSTRUCTIONS.md       # Ghid de împachetare
 │
 └── temp_speech_*.mp3                # Fișiere TTS temporare (auto-șterse)
 ```
+
+---
+
+## 📦 Împachetare ca EXE ⭐ NOU!
+
+Aplicația poate fi împachetată ca executabil Windows standalone, fără să necesite Python instalat.
+
+### Cerințe
+```bash
+pip install pyinstaller
+```
+
+### Metoda Rapidă (Windows)
+```bash
+# Rulează scriptul automat
+build.bat
+```
+
+Executabilul va fi în `dist/VoiceChat_Gemini.exe` (~500MB-1GB).
+
+### Metoda Manuală
+```bash
+# Cu fișierul .spec (recomandat)
+pyinstaller voice_chat.spec
+
+# Sau comandă directă
+pyinstaller --onefile --name="VoiceChat_Gemini" voice_chat.py
+```
+
+### Personalizări
+
+**Fără consolă (doar fereastră):**
+În `voice_chat.spec`, schimbă `console=True` → `console=False`
+
+**Adaugă iconiță:**
+În `voice_chat.spec`, schimbă `icon=None` → `icon='icon.ico'`
+
+### Distribuție
+Pentru distribuție, include:
+- `VoiceChat_Gemini.exe`
+- Fișierul `.env` (sau instrucțiuni pentru cheia API)
+- Folder `prompts/` (opțional, se creează automat)
+
+**Documentație completă:** Vezi `BUILD_INSTRUCTIONS.md`
 
 ---
 
@@ -289,11 +399,21 @@ voice-chat-gemini/
 2. Verifică că API key-ul e valid în [Google AI Studio](https://makersuite.google.com/app/apikey)
 3. Șterge `.env` și repornește → aplicația va cere din nou cheia
 
-### Eroare "Model not found: gemini-1.5-flash"
-**Problemă:** Modelul nu e disponibil în regiunea ta.
+### Prompturile nu se încarcă
+**Problemă:** ComboBox-ul e gol sau eroare la pornire.
 
-**Soluție:**
-Modelul folosit este `gemini-flash-latest` care ar trebui să fie disponibil global. Dacă întâmpini probleme, verifică [Gemini API docs](https://ai.google.dev/).
+**Soluții:**
+1. Verifică că există folderul `prompts/`
+2. Verifică că există măcar un fișier `.txt` în folder
+3. Șterge `voice_chat_config.json` și repornește (resetează config)
+4. Verifică log-urile: `[PROMPTS]` pentru detalii
+
+### Eroare la ștergerea promptului
+**Problemă:** "Nu poți șterge ultimul prompt"
+
+**Explicație:** Trebuie să existe măcar un prompt în sistem.
+
+**Soluție:** Creează un prompt nou înainte de a șterge ultimul.
 
 ### TTS nu funcționează
 **Problemă:** AI-ul răspunde dar nu vorbește.
@@ -311,14 +431,14 @@ Modelul folosit este `gemini-flash-latest` care ar trebui să fie disponibil glo
 2. Verifică în log-uri: ar trebui să vezi `✅ [ASSISTANT] Screenshot capturat!`
 3. Verifică permisiunile de screenshot pe sistemul tău
 
-### Aplicația se închide brusc
-**Problemă:** Crash la pornire sau în timpul utilizării.
+### EXE nu pornește (după build)
+**Problemă:** Eroare la rularea executabilului.
 
 **Soluții:**
-1. Verifică versiunea Python (minim 3.8)
-2. Reinstalează dependențele: `pip install -r requirements.txt --force-reinstall`
-3. Verifică log-urile din consolă pentru traceback-uri
-4. Raportează issue-ul pe GitHub cu log-urile complete
+1. Rulează cu `console=True` în `.spec` pentru a vedea erorile
+2. Verifică că ai inclus toate dependențele în `hiddenimports`
+3. Prima rulare necesită internet (descarcă modele VAD)
+4. Verifică antivirus-ul (uneori blochează PyInstaller)
 
 ---
 
@@ -342,7 +462,7 @@ LOG_CONFIG = {
     "mute": True,
     "gemini": True,
     "gemini_debug": True,  # ← Setează True pentru traceback-uri complete
-    "semafor": True,    # ← Setează True pentru debug semafor
+    "semafor": False,      # ← Setează True pentru debug semafor
 }
 ```
 
@@ -370,11 +490,13 @@ Contribuțiile sunt binevenite! 🎉
 ### Idei pentru Contribuții
 
 - 🌍 Suport pentru mai multe limbi
-- 🎨 Teme UI personalizabile
+- 🎨 Teme UI personalizabile (dark/light mode)
 - 📊 Grafice pentru istoric conversații
 - 🔌 Plugin system pentru extensii
 - 📱 Versiune mobile (React Native/Flutter)
 - 🎙️ Streaming audio input pentru latency mai mică
+- 🔗 Import/export prompturi (share community presets)
+- 🎯 Hotkeys globale pentru control rapid
 
 ---
 
@@ -442,27 +564,35 @@ Dacă proiectul ți-a fost util, oferă-i un **⭐ star** pe GitHub!
 - [x] Chat vocal cu Gemini
 - [x] TTS în limba română
 - [x] Desktop Assistant multimodal
-- [x] System prompt extern
+- [x] Sistem prompturi multiple ⭐ NOU
 - [x] Auto-calibrare audio
+- [x] Selectare model AI (Flash/Pro)
+- [x] Cronometrele vizuale pe semafoare
+- [x] Build ca EXE cu PyInstaller
 
 ### v1.1 (Next) 🔜
+- [ ] Import/export prompturi (share presets)
 - [ ] Suport multiple monitoare
 - [ ] Recorder conversații
-- [ ] Export conversații (PDF/JSON)
+- [ ] Export conversații (PDF/JSON/Markdown)
 - [ ] Hotkeys globale
+- [ ] Dark/Light mode UI
 
 ### v2.0 (Future) 🚀
-- [ ] Plugin system
-- [ ] API REST pentru integrări
-- [ ] Web interface
+- [ ] Plugin system pentru extensii
+- [ ] API REST pentru integrări externe
+- [ ] Web interface (remote control)
 - [ ] Mobile app companion
-- [ ] Cloud sync pentru configurări
+- [ ] Cloud sync pentru configurări și prompturi
+- [ ] Voice cloning pentru TTS personalizat
 
 ---
 
 <div align="center">
 
 **Făcut cu ❤️ și ☕ în România**
+
+*Sistem inovator de prompturi multiple - schimbă personalitatea AI-ului într-un click!*
 
 [⬆ Back to top](#-chat-vocal-avansat-cu-gemini-ai)
 

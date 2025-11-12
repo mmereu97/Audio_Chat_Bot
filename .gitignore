@@ -28,3 +28,4 @@ conversation_logs/
 
 # Foldere de backup (dacă nu vrei să le urmărești)
 backup/
+prompts/

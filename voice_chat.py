@@ -1827,12 +1827,25 @@ class AdvancedVoiceChatApp(QWidget):
         event.accept()
 
 if __name__ == "__main__":
+    # --- BLOC NOU PENTRU A REZOLVA EROAREA EXECUTABILULUI ---
+    # Verificăm dacă programul rulează ca un executabil PyInstaller
+    if getattr(sys, 'frozen', False):
+        # Dacă da, creăm un folder pentru log-uri
+        log_dir = os.path.join(os.getcwd(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Redirecționăm stdout și stderr către un fișier de log
+        log_file_path = os.path.join(log_dir, "app_log.txt")
+        sys.stdout = open(log_file_path, 'w', encoding='utf-8')
+        sys.stderr = sys.stdout
+    # --- SFÂRȘIT BLOC NOU ---
+
     log_timestamp("=" * 60, "app")
     log_timestamp("🎤 CHAT VOCAL AVANSAT CU GEMINI AI (STREAMING) 🎤", "app")
     log_timestamp("=" * 60, "app")
     
     cleanup_temp_files()
-    cleanup_screenshots_folder() # <-- AICI ESTE LINIA NOUĂ
+    cleanup_screenshots_folder()
     
     app = QApplication(sys.argv)
     window = AdvancedVoiceChatApp()
